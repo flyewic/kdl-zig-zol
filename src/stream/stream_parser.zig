@@ -682,39 +682,12 @@ pub fn parseReaderWithOptions(allocator: Allocator, reader: *std.Io.Reader, opti
     
     /// Parallel preprocessing to multiple Documents using SIMD Stage 1.
     pub fn preprocessParallelToDocs(allocator: Allocator, source: []const u8, thread_count: usize) ![]StreamDocument {
-        const b_indices = try boundaries.findNodeBoundaries(allocator, source, thread_count);
-        defer allocator.free(b_indices);
-    
-        if (b_indices.len == 0) {
-            const doc = try parse(allocator, source);
-            const docs = try allocator.alloc(StreamDocument, 1);
-            docs[0] = doc;
-            return docs;
-        }
-    
-        var docs = try allocator.alloc(StreamDocument, b_indices.len + 1);
-        var wg = std.Thread.WaitGroup{};
-        var pool: std.Thread.Pool = undefined;
-        try pool.init(.{ .allocator = allocator });
-        defer pool.deinit();
-    
-        var start_pos: usize = 0;
-        for (0..b_indices.len + 1) |i| {
-            const end = if (i < b_indices.len) b_indices[i] else source.len;
-            const segment = source[start_pos..end];
-            
-            wg.start();
-            try pool.spawn(struct {
-                fn run(w: *std.Thread.WaitGroup, alloc: Allocator, src: []const u8, doc_ptr: *StreamDocument) void {
-                    defer w.finish();
-                    doc_ptr.* = parseWithOptions(alloc, src, .{ .strategy = .preprocessed }) catch unreachable;
-                }
-            }.run, .{ &wg, allocator, segment, &docs[i] });
-            
-            start_pos = end;
-        }
-    
-        wg.wait();
+        _ = thread_count;
+        // `std.Thread.Pool`/`std.Thread.WaitGroup` were removed in Zig 0.16; this
+        // fork falls back to a single-threaded parse (identical result).
+        const doc = try parse(allocator, source);
+        const docs = try allocator.alloc(StreamDocument, 1);
+        docs[0] = doc;
         return docs;
     }
     
@@ -1080,7 +1053,7 @@ test "parallel parse and merge" {
         try std.testing.expectEqual(@as(usize, 4), count);
     } else {
         // Parse partitions separately
-        var docs = std.ArrayListUnmanaged(StreamDocument){};
+        var docs: std.ArrayListUnmanaged(StreamDocument) = .empty;
         defer {
             for (docs.items) |*d| d.deinit();
             docs.deinit(std.testing.allocator);

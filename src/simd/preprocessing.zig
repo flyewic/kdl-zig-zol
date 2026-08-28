@@ -63,7 +63,7 @@ pub fn preprocess(allocator: std.mem.Allocator, source: []const u8) !Preprocesse
     if (source.len == 0) return .{ .indices = &[_]u64{}, .count = 0, .source_len = 0 };
 
     const initial_cap = @max(source.len / 8, 64);
-    var indices = std.ArrayListUnmanaged(u64){};
+    var indices: std.ArrayListUnmanaged(u64) = .empty;
     try indices.ensureTotalCapacity(allocator, initial_cap);
     errdefer indices.deinit(allocator);
 
@@ -155,65 +155,13 @@ pub fn preprocess(allocator: std.mem.Allocator, source: []const u8) !Preprocesse
 }
 
 pub fn preprocessParallel(allocator: std.mem.Allocator, source: []const u8, thread_count: usize) !PreprocessedIndex {
-    if (source.len < 1024 * 128 or thread_count <= 1) {
-        return preprocess(allocator, source);
-    }
-
-    const boundaries = try @import("util").boundaries.findNodeBoundaries(allocator, source, thread_count);
-    defer allocator.free(boundaries);
-
-    if (boundaries.len == 0) {
-        return preprocess(allocator, source);
-    }
-
-    var partial_indices = try allocator.alloc([]u64, boundaries.len + 1);
-    var partial_counts = try allocator.alloc(usize, boundaries.len + 1);
-    
-    var wg = std.Thread.WaitGroup{};
-    var pool: std.Thread.Pool = undefined;
-    try pool.init(.{ .allocator = allocator });
-    defer pool.deinit();
-
-    var start_pos: usize = 0;
-    for (0..boundaries.len + 1) |i| {
-        const end = if (i < boundaries.len) boundaries[i] else source.len;
-        const segment = source[start_pos..end];
-        
-        wg.start();
-        try pool.spawn(struct {
-            fn run(w: *std.Thread.WaitGroup, alloc: std.mem.Allocator, src: []const u8, idx_ptr: *[]u64, count_ptr: *usize) void {
-                defer w.finish();
-                const res = preprocess(alloc, src) catch return;
-                idx_ptr.* = res.indices;
-                count_ptr.* = res.count;
-            }
-        }.run, .{ &wg, allocator, segment, &partial_indices[i], &partial_counts[i] });
-        
-        start_pos = end;
-    }
-
-    wg.wait();
-
-    var total_count: usize = 0;
-    for (partial_counts) |c| total_count += c;
-
-    var final_indices = try allocator.alloc(u64, total_count);
-    var offset: usize = 0;
-    start_pos = 0;
-    for (0..partial_indices.len) |i| {
-        const indices = partial_indices[i];
-        for (indices) |idx| {
-            final_indices[offset] = idx + @as(u64, @intCast(start_pos));
-            offset += 1;
-        }
-        allocator.free(indices);
-        start_pos = if (i < boundaries.len) boundaries[i] else source.len;
-    }
-
-    allocator.free(partial_indices);
-    allocator.free(partial_counts);
-
-    return .{ .indices = final_indices, .count = total_count, .source_len = source.len };
+    _ = thread_count;
+    // `std.Thread.Pool` and `std.Thread.WaitGroup` were removed in Zig 0.16.
+    // Rather than reimplement a manual thread fan-out, this fork falls back to
+    // the single-threaded path (results are identical; only large-input
+    // throughput changes). zol's config files never reach the parallel
+    // threshold, so the simplification is invisible in practice.
+    return preprocess(allocator, source);
 }
 
 

@@ -59,25 +59,25 @@ pub const Collection = struct {
 
 pub fn register(b: *std.Build, config: Config) !Collection {
     const allocator = b.allocator;
-    var all_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var all_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer all_steps.deinit(allocator);
 
-    var unit_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var unit_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer unit_steps.deinit(allocator);
 
-    var integration_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var integration_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer integration_steps.deinit(allocator);
 
-    var stream_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var stream_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer stream_steps.deinit(allocator);
 
-    var simd_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var simd_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer simd_steps.deinit(allocator);
 
-    var util_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var util_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer util_steps.deinit(allocator);
 
-    var kernel_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var kernel_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer kernel_steps.deinit(allocator);
 
     inline for (specs) |spec| {

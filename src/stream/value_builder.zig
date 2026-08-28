@@ -131,13 +131,13 @@ pub fn buildMultilineString(pool: *StringPool, text: []const u8) Error!StringRef
     }
 
     // Process escapes on the dedent line
-    var dedent_buf: std.ArrayListUnmanaged(u8) = .{};
+    var dedent_buf: std.ArrayListUnmanaged(u8) = .empty;
     defer dedent_buf.deinit(pool.allocator);
     writeEscapedContentToBuf(&dedent_buf, pool.allocator, raw_last_line) catch return Error.OutOfMemory;
 
     // If last content line ends with backslash, it joins with the dedent line
     // The effective dedent becomes: stripped_content + processed_dedent_line
-    var effective_dedent_buf: std.ArrayListUnmanaged(u8) = .{};
+    var effective_dedent_buf: std.ArrayListUnmanaged(u8) = .empty;
     defer effective_dedent_buf.deinit(pool.allocator);
 
     const last_content_ends_with_backslash = content_line_count > 0 and string_utils.endsWithBackslash(last_content_line);

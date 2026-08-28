@@ -46,10 +46,10 @@ pub const specs = [_]BenchmarkSpec{
 pub fn register(b: *std.Build, config: Config) !Collection {
     const allocator = b.allocator;
 
-    var all_steps = std.ArrayListUnmanaged(*std.Build.Step){};
+    var all_steps: std.ArrayListUnmanaged(*std.Build.Step) = .empty;
     defer all_steps.deinit(allocator);
 
-    var executables = std.ArrayListUnmanaged(*std.Build.Step.Compile){};
+    var executables: std.ArrayListUnmanaged(*std.Build.Step.Compile) = .empty;
     defer executables.deinit(allocator);
 
     inline for (specs) |spec| {

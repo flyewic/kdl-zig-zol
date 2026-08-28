@@ -102,7 +102,7 @@ pub const StringPool = struct {
 
     pub fn init(allocator: Allocator) Allocator.Error!StringPool {
         var pool = StringPool{
-            .data = .{},
+            .data = .empty,
             .allocator = allocator,
         };
         // Reserve offset 0 with a sentinel byte so empty strings added later
@@ -182,8 +182,8 @@ pub const ValuePool = struct {
 
     pub fn init(allocator: Allocator) ValuePool {
         return .{
-            .arguments = .{},
-            .properties = .{},
+            .arguments = .empty,
+            .properties = .empty,
             .allocator = allocator,
         };
     }
@@ -242,13 +242,13 @@ pub const NodeStorage = struct {
 
     pub fn init(allocator: Allocator) NodeStorage {
         return .{
-            .names = .{},
-            .type_annotations = .{},
-            .parents = .{},
-            .first_child = .{},
-            .next_sibling = .{},
-            .arg_ranges = .{},
-            .prop_ranges = .{},
+            .names = .empty,
+            .type_annotations = .empty,
+            .parents = .empty,
+            .first_child = .empty,
+            .next_sibling = .empty,
+            .arg_ranges = .empty,
+            .prop_ranges = .empty,
             .allocator = allocator,
         };
     }
@@ -367,7 +367,7 @@ pub const StreamDocument = struct {
             .strings = try StringPool.init(allocator),
             .values = ValuePool.init(allocator),
             .nodes = NodeStorage.init(allocator),
-            .roots = .{},
+            .roots = .empty,
             .allocator = allocator,
             .source = null,
             .chunked_source = null,
@@ -380,7 +380,7 @@ pub const StreamDocument = struct {
             .strings = try StringPool.init(allocator),
             .values = ValuePool.init(allocator),
             .nodes = NodeStorage.init(allocator),
-            .roots = .{},
+            .roots = .empty,
             .allocator = allocator,
             .source = source,
             .chunked_source = null,
@@ -394,7 +394,7 @@ pub const StreamDocument = struct {
             .strings = try StringPool.init(allocator),
             .values = ValuePool.init(allocator),
             .nodes = NodeStorage.init(allocator),
-            .roots = .{},
+            .roots = .empty,
             .allocator = allocator,
             .source = null,
             .chunked_source = source,

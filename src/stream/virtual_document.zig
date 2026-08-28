@@ -259,7 +259,7 @@ test "VirtualDocument multiple chunks" {
     try std.testing.expectEqual(@as(usize, 3), virtual.chunkCount());
     try std.testing.expectEqual(@as(usize, 6), virtual.rootCount());
 
-    var names = std.ArrayListUnmanaged([]const u8){};
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
     defer names.deinit(std.testing.allocator);
 
     var iter = virtual.rootIterator();

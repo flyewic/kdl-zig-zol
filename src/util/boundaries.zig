@@ -11,7 +11,7 @@ pub fn findNodeBoundaries(allocator: Allocator, source: []const u8, max_partitio
         return &[_]usize{};
     }
 
-    var boundaries = std.ArrayListUnmanaged(usize){};
+    var boundaries: std.ArrayListUnmanaged(usize) = .empty;
     defer boundaries.deinit(allocator);
 
     // Target partition size

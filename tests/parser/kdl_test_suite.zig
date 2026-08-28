@@ -11,7 +11,7 @@ fn runTestCase(allocator: std.mem.Allocator, name: []const u8) !void {
     defer allocator.free(input_path);
 
     // Read input file
-    const input = std.fs.cwd().readFileAlloc(allocator, input_path, 10 * 1024 * 1024) catch |err| {
+    const input = std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), std.testing.io, input_path, allocator, std.Io.Limit.limited(10 * 1024 * 1024)) catch |err| {
         std.debug.print("Failed to read {s}: {}\n", .{ input_path, err });
         return err;
     };
@@ -35,7 +35,7 @@ fn runTestCase(allocator: std.mem.Allocator, name: []const u8) !void {
         const expected_path = try std.fmt.allocPrint(allocator, "{s}/expected_kdl/{s}", .{ test_cases_dir, name });
         defer allocator.free(expected_path);
 
-        const expected = std.fs.cwd().readFileAlloc(allocator, expected_path, 10 * 1024 * 1024) catch |err| {
+        const expected = std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), std.testing.io, expected_path, allocator, std.Io.Limit.limited(10 * 1024 * 1024)) catch |err| {
             std.debug.print("Failed to read expected output {s}: {}\n", .{ expected_path, err });
             return err;
         };
@@ -54,11 +54,9 @@ fn runTestCase(allocator: std.mem.Allocator, name: []const u8) !void {
             return err;
         };
         defer allocator.free(actual);
-
         // Compare (trim trailing whitespace for comparison)
-        const expected_trimmed = std.mem.trimRight(u8, expected, "\n\r ");
-        const actual_trimmed = std.mem.trimRight(u8, actual, "\n\r ");
-
+        const expected_trimmed = std.mem.trimEnd(u8, expected, "\n\r ");
+        const actual_trimmed = std.mem.trimEnd(u8, actual, "\n\r ");
         if (!std.mem.eql(u8, expected_trimmed, actual_trimmed)) {
             std.debug.print("\nFAIL: {s}\n", .{name});
             std.debug.print("--- Expected ---\n{s}\n", .{expected_trimmed});
@@ -72,20 +70,20 @@ fn runTestCase(allocator: std.mem.Allocator, name: []const u8) !void {
 /// Get all test case file names
 fn getTestCases(allocator: std.mem.Allocator) ![][]const u8 {
     const input_dir_path = test_cases_dir ++ "/input";
-    var dir = std.fs.cwd().openDir(input_dir_path, .{ .iterate = true }) catch |err| {
+    var dir = std.Io.Dir.openDir(std.Io.Dir.cwd(), std.testing.io, input_dir_path, .{ .iterate = true }) catch |err| {
         std.debug.print("Cannot open test directory {s}: {}\n", .{ input_dir_path, err });
         return err;
     };
-    defer dir.close();
+    defer dir.close(std.testing.io);
 
-    var names: std.ArrayListUnmanaged([]const u8) = .{};
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
     errdefer {
         for (names.items) |n| allocator.free(n);
         names.deinit(allocator);
     }
 
-    var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    var iter = std.Io.Dir.iterate(dir);
+    while (try iter.next(std.testing.io)) |entry| {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".kdl")) {
             try names.append(allocator, try allocator.dupe(u8, entry.name));
         }
@@ -110,7 +108,7 @@ test "KDL official test suite" {
     var failed: usize = 0;
     var skipped: usize = 0;
 
-    var failed_tests: std.ArrayListUnmanaged([]const u8) = .{};
+    var failed_tests: std.ArrayListUnmanaged([]const u8) = .empty;
     defer {
         for (failed_tests.items) |n| allocator.free(n);
         failed_tests.deinit(allocator);

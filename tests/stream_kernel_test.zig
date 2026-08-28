@@ -3,7 +3,7 @@ const kdl = @import("kdl");
 
 const KernelCapture = struct {
     allocator: std.mem.Allocator,
-    events: std.ArrayListUnmanaged([]u8) = .{},
+    events: std.ArrayListUnmanaged([]u8) = .empty,
 
     fn init(allocator: std.mem.Allocator) KernelCapture {
         return .{ .allocator = allocator };
