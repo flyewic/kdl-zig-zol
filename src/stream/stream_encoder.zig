@@ -62,15 +62,14 @@ pub fn encode(value: anytype, writer: *std.Io.Writer, options: EncodeOptions) Er
 }
 
 fn encodeStructContent(value: anytype, writer: *std.Io.Writer, depth: usize, options: EncodeOptions) Error!void {
-    const T = @TypeOf(value);
-    const fields = std.meta.fields(T);
+    const info = @typeInfo(@TypeOf(value)).@"struct";
 
-    inline for (fields) |field| {
+    inline for (info.field_names) |field_name| {
         // Skip special fields at top level
-        if (comptime std.mem.eql(u8, field.name, "__args")) continue;
+        if (comptime std.mem.eql(u8, field_name, "__args")) continue;
 
-        const field_val = @field(value, field.name);
-        try encodeNodeOrNodes(field.name, field_val, writer, depth, options);
+        const field_val = @field(value, field_name);
+        try encodeNodeOrNodes(field_name, field_val, writer, depth, options);
     }
 }
 
@@ -141,7 +140,7 @@ fn encodeNode(name: []const u8, value: anytype, writer: *std.Io.Writer, depth: u
 
 fn encodeStructNodeBody(value: anytype, writer: *std.Io.Writer, depth: usize, options: EncodeOptions) Error!void {
     const T = @TypeOf(value);
-    const fields = std.meta.fields(T);
+    const info = @typeInfo(T).@"struct";
 
     // 1. Arguments
     if (@hasField(T, "__args")) {
@@ -161,25 +160,25 @@ fn encodeStructNodeBody(value: anytype, writer: *std.Io.Writer, depth: usize, op
     }
 
     // 2. Properties (simple types as key=value)
-    inline for (fields) |field| {
-        if (comptime isKdlPropertyType(field.type) and !isSpecialField(field.name)) {
-            const val = @field(value, field.name);
-            if (@typeInfo(field.type) == .optional) {
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        if (comptime isKdlPropertyType(field_type) and !isSpecialField(field_name)) {
+            const val = @field(value, field_name);
+            if (@typeInfo(field_type) == .optional) {
                 if (val) |v| {
-                    try writeProp(field.name, v, writer);
+                    try writeProp(field_name, v, writer);
                 }
             } else {
-                try writeProp(field.name, val, writer);
+                try writeProp(field_name, val, writer);
             }
         }
     }
 
     // 3. Children (nested structs)
     var has_children = false;
-    inline for (fields) |field| {
-        if (comptime isKdlChildType(field.type) and !isSpecialField(field.name)) {
-            const val = @field(value, field.name);
-            const field_info = @typeInfo(field.type);
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        if (comptime isKdlChildType(field_type) and !isSpecialField(field_name)) {
+            const val = @field(value, field_name);
+            const field_info = @typeInfo(field_type);
             if (field_info == .optional) {
                 if (val != null) has_children = true;
             } else if (field_info == .pointer and field_info.pointer.size == .slice) {
@@ -193,10 +192,10 @@ fn encodeStructNodeBody(value: anytype, writer: *std.Io.Writer, depth: usize, op
     if (has_children) {
         try writer.writeAll(" {\n");
 
-        inline for (fields) |field| {
-            if (comptime isKdlChildType(field.type) and !isSpecialField(field.name)) {
-                const val = @field(value, field.name);
-                try encodeNodeOrNodes(field.name, val, writer, depth + 1, options);
+        inline for (info.field_names, info.field_types) |field_name, field_type| {
+            if (comptime isKdlChildType(field_type) and !isSpecialField(field_name)) {
+                const val = @field(value, field_name);
+                try encodeNodeOrNodes(field_name, val, writer, depth + 1, options);
             }
         }
 
@@ -334,7 +333,7 @@ test "encode nested struct (child node)" {
 
 test "encode arguments" {
     const Node = struct {
-        __args: std.meta.Tuple(&.{ []const u8, i32 }),
+        __args: @Tuple(&.{ []const u8, i32 }),
         key: []const u8,
     };
 

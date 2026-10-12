@@ -40,7 +40,7 @@ pub fn parseReaderWithKernel(allocator: Allocator, reader: *std.Io.Reader, sink:
         .chunk_size = options.chunk_size,
         .max_document_size = options.max_document_size,
     });
-    
+
     // Check if sink can accept ownership of the source
     var source_owned = false;
     const SinkType = @TypeOf(sink);
@@ -72,8 +72,8 @@ pub fn parseReaderWithKernel(allocator: Allocator, reader: *std.Io.Reader, sink:
 pub const StreamDocumentKernel = struct {
     allocator: Allocator,
     doc: stream_types.StreamDocument,
-    node_stack: std.ArrayListUnmanaged(NodeFrame) = .{},
-    child_stack: std.ArrayListUnmanaged(stream_types.NodeHandle) = .{},
+    node_stack: std.ArrayListUnmanaged(NodeFrame) = .empty,
+    child_stack: std.ArrayListUnmanaged(stream_types.NodeHandle) = .empty,
 
     const NodeFrame = struct {
         name: stream_types.StringRef,

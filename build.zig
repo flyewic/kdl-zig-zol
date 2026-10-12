@@ -72,7 +72,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .modules = modules,
-        .args = b.args,
     }) catch |err| {
         std.debug.print("Failed to register benchmarks: {}\n", .{err});
         return;
@@ -129,7 +128,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .modules = modules,
-        .args = b.args,
     }) catch |err| {
         std.debug.print("Failed to register fuzz tests: {}\n", .{err});
         return;

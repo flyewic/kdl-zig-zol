@@ -57,11 +57,11 @@ pub const NodeHandle = enum(u64) {
     _,
 
     pub fn fromIndex(index: usize) NodeHandle {
-        return @enumFromInt(@as(u64, @intCast(index)));
+        return @fromBackingInt(@as(u64, @intCast(index)));
     }
 
     pub fn toIndex(self: NodeHandle) usize {
-        return @intCast(@intFromEnum(self));
+        return @intCast(@backingInt(self));
     }
 };
 
@@ -425,7 +425,7 @@ pub const StreamDocument = struct {
         if (ref.len == 0) return "";
         if (ref.isBorrowed()) {
             const offset = ref.getOffset();
-            
+
             // Try single source buffer first
             if (self.source) |src| {
                 if (offset + ref.len > src.len) {
@@ -434,10 +434,10 @@ pub const StreamDocument = struct {
                 }
                 return src[offset..][0..ref.len];
             }
-            
+
             // Try chunked source
             if (self.chunked_source) |cs| {
-                 // Binary search for the chunk containing the offset
+                // Binary search for the chunk containing the offset
                 var lo: usize = 0;
                 var hi: usize = cs.offsets.len;
                 while (lo < hi) {
@@ -449,12 +449,12 @@ pub const StreamDocument = struct {
                             const chunk_start = cs.offsets[chunk_idx];
                             const local_offset = offset - chunk_start;
                             const chunk = cs.chunks[chunk_idx];
-                            
+
                             if (local_offset + ref.len > chunk.len) {
                                 // String spans across chunks - this should not happen for borrowed strings
                                 // because we only borrow if contiguous.
                                 // If it does happen, it means logic error elsewhere.
-                                std.debug.assert(false); 
+                                std.debug.assert(false);
                                 return "";
                             }
                             return chunk.data[local_offset..][0..ref.len];
@@ -498,7 +498,7 @@ pub const StreamDocument = struct {
         // Check chunked source
         if (self.chunked_source) |cs| {
             // Check which chunk it might be in.
-            // Since we have the pointer, we can just iterate chunks. 
+            // Since we have the pointer, we can just iterate chunks.
             // Binary search is harder with pointers unless we assume chunks are ordered in memory (they are not necessarily).
             for (cs.chunks, 0..) |chunk, i| {
                 const chunk_start = @intFromPtr(chunk.data.ptr);

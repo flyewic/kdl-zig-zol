@@ -127,7 +127,7 @@ pub fn findNodeBoundaries(allocator: Allocator, source: []const u8, max_partitio
             var next_start = boundary_end;
             while (next_start < source.len and
                 (source[next_start] == ' ' or source[next_start] == '\t' or
-                source[next_start] == '\n' or source[next_start] == '\r'))
+                    source[next_start] == '\n' or source[next_start] == '\r'))
             {
                 next_start += 1;
             }

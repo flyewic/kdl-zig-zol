@@ -3,6 +3,7 @@
 const std = @import("std");
 const kdl = @import("kdl");
 const simd = kdl.simd;
+const Timer = @import("timer.zig").Timer;
 
 pub fn main() !void {
     const print = std.debug.print;
@@ -44,7 +45,7 @@ pub fn main() !void {
 
     // Benchmark SIMD whitespace scanning
     {
-        var timer = try std.time.Timer.start();
+        var timer = try Timer.start();
 
         var result: usize = 0;
         for (0..iterations) |_| {
@@ -80,7 +81,7 @@ pub fn main() !void {
 
     // Benchmark scalar whitespace scanning for comparison
     {
-        var timer = try std.time.Timer.start();
+        var timer = try Timer.start();
 
         var result: usize = 0;
         for (0..iterations) |_| {
@@ -116,7 +117,7 @@ pub fn main() !void {
 
     // Benchmark string terminator scanning
     {
-        var timer = try std.time.Timer.start();
+        var timer = try Timer.start();
 
         var result: usize = 0;
         for (0..iterations) |_| {
@@ -137,7 +138,7 @@ pub fn main() !void {
     }
 
     {
-        var timer = try std.time.Timer.start();
+        var timer = try Timer.start();
 
         var result: usize = 0;
         for (0..iterations) |_| {
@@ -159,12 +160,19 @@ pub fn main() !void {
 
     // Benchmark Structural Scanning (Stage 1)
     {
-        const large_kdl = "node (type)key=\"value\" { child prop=123; } \n" ** 100;
+        const large_kdl = blk: {
+            const unit = "node (type)key=\"value\" { child prop=123; } \n";
+            var buf: [unit.len * 100]u8 = undefined;
+            inline for (0..100) |i| {
+                @memcpy(buf[i * unit.len ..][0..unit.len], unit);
+            }
+            break :blk buf;
+        };
         const allocator = std.heap.page_allocator;
 
-        var timer = try std.time.Timer.start();
+        var timer = try Timer.start();
         for (0..iterations / 100) |_| {
-            const index = try simd.structural.scan(allocator, large_kdl, .{});
+            const index = try simd.structural.scan(allocator, &large_kdl, .{});
             index.deinit(allocator);
         }
         const elapsed_simd = timer.lap();

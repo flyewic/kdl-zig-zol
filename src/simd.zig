@@ -113,7 +113,7 @@ test "scanBlock works correctly" {
 
 test "simd module uses correct implementation" {
     // Verify we're using SIMD on x86_64
-    if (@import("builtin").cpu.arch == .x86_64) {
+    if (@import("builtin").target.cpu.arch == .x86_64) {
         try std.testing.expect(has_simd);
         try std.testing.expect(detected_isa == .x86_64_sse2 or detected_isa == .x86_64_avx2);
     }

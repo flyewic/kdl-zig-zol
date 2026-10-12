@@ -3,7 +3,6 @@
 /// String views are borrowed from the parser's input buffer and are only
 /// guaranteed to remain valid until the next event is emitted.
 /// Sinks that need longer-lived data must copy.
-
 /// String token kind for stream events.
 pub const StringKind = enum {
     identifier,

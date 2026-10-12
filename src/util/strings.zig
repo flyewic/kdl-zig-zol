@@ -30,7 +30,7 @@ const unicode = @import("unicode.zig");
 /// by the provided allocator and must be freed. The inner slices are views into
 /// the original `content` and should not be freed.
 pub fn splitLines(allocator: Allocator, content: []const u8) Allocator.Error![]const []const u8 {
-    var lines: std.ArrayListUnmanaged([]const u8) = .{};
+    var lines: std.ArrayListUnmanaged([]const u8) = .empty;
     var line_start: usize = 0;
     var i: usize = 0;
 
@@ -214,7 +214,7 @@ fn buildDedentedOutput(
     dedent: []const u8,
     raw_ws_only: ?[]const bool,
 ) Error![]const u8 {
-    var result: std.ArrayListUnmanaged(u8) = .{};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
 
     // Process content lines (skip first line after """ and last line before """)
     for (lines[1 .. lines.len - 1], 0..) |line, idx| {
@@ -288,7 +288,7 @@ pub fn processMultilineString(allocator: Allocator, text: []const u8) Error![]co
     // Track which lines are whitespace-only in RAW form (before escape processing)
     // This is critical: \s becomes whitespace after processing, but the line
     // should NOT be treated as whitespace-only since it has explicit content.
-    var raw_ws_only: std.ArrayListUnmanaged(bool) = .{};
+    var raw_ws_only: std.ArrayListUnmanaged(bool) = .empty;
     raw_ws_only.append(allocator, true) catch return Error.OutOfMemory; // Placeholder for line 0
     defer raw_ws_only.deinit(allocator);
 
@@ -347,7 +347,7 @@ pub fn processEscapes(allocator: Allocator, text: []const u8) Error![]const u8 {
         return text;
     }
 
-    var result: std.ArrayListUnmanaged(u8) = .{};
+    var result: std.ArrayListUnmanaged(u8) = .empty;
     var i: usize = 0;
     while (i < text.len) {
         if (text[i] == '\\' and i + 1 < text.len) {

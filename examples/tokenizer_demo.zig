@@ -12,7 +12,7 @@ pub fn main() !void {
     std.debug.print("Tokenizing KDL document:\n{s}\n\n", .{source});
     std.debug.print("Tokens:\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.SafeAllocator.init(std.heap.page_allocator, .{});
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

@@ -64,11 +64,11 @@ pub fn scanBlock(data: []const u8) StructuralMasks {
         // Delimiters { } ( ) ; =
         {
             const m_bool = (v == @as(Vec, @splat('{'))) |
-                           (v == @as(Vec, @splat('}'))) |
-                           (v == @as(Vec, @splat('('))) |
-                           (v == @as(Vec, @splat(')'))) |
-                           (v == @as(Vec, @splat(';'))) |
-                           (v == @as(Vec, @splat('=')));
+                (v == @as(Vec, @splat('}'))) |
+                (v == @as(Vec, @splat('('))) |
+                (v == @as(Vec, @splat(')'))) |
+                (v == @as(Vec, @splat(';'))) |
+                (v == @as(Vec, @splat('=')));
             const m_bits: MaskInt = @bitCast(m_bool);
             masks.delimiters |= @as(u64, m_bits) << shift_amt;
         }
@@ -90,7 +90,7 @@ pub fn scanBlock(data: []const u8) StructuralMasks {
         // Newlines \n \r
         {
             const m_bool = (v == @as(Vec, @splat('\n'))) |
-                           (v == @as(Vec, @splat('\r')));
+                (v == @as(Vec, @splat('\r')));
             const m_bits: MaskInt = @bitCast(m_bool);
             masks.newlines |= @as(u64, m_bits) << shift_amt;
         }
@@ -98,7 +98,7 @@ pub fn scanBlock(data: []const u8) StructuralMasks {
         // Others * -
         {
             const m_bool = (v == @as(Vec, @splat('*'))) |
-                           (v == @as(Vec, @splat('-')));
+                (v == @as(Vec, @splat('-')));
             const m_bits: MaskInt = @bitCast(m_bool);
             masks.others |= @as(u64, m_bits) << shift_amt;
         }
@@ -254,24 +254,24 @@ pub inline fn findIdentifierEnd(data: []const u8) usize {
 
         // Identification mask: characters that are terminators or non-ASCII
         const is_non_ascii = chunk >= @as(Vec, @splat(0x80));
-        
+
         // Terminating characters: space, tab, newline, cr, (, ), {, }, [, ], /, \, ", #, ;, =
         const is_term = (chunk == @as(Vec, @splat(' '))) |
-                        (chunk == @as(Vec, @splat('\t'))) |
-                        (chunk == @as(Vec, @splat('\n'))) |
-                        (chunk == @as(Vec, @splat('\r'))) |
-                        (chunk == @as(Vec, @splat('('))) |
-                        (chunk == @as(Vec, @splat(')'))) |
-                        (chunk == @as(Vec, @splat('{'))) |
-                        (chunk == @as(Vec, @splat('}'))) |
-                        (chunk == @as(Vec, @splat('['))) |
-                        (chunk == @as(Vec, @splat(']'))) |
-                        (chunk == @as(Vec, @splat('/'))) |
-                        (chunk == @as(Vec, @splat('\\'))) |
-                        (chunk == @as(Vec, @splat('"'))) |
-                        (chunk == @as(Vec, @splat('#'))) |
-                        (chunk == @as(Vec, @splat(';'))) |
-                        (chunk == @as(Vec, @splat('=')));
+            (chunk == @as(Vec, @splat('\t'))) |
+            (chunk == @as(Vec, @splat('\n'))) |
+            (chunk == @as(Vec, @splat('\r'))) |
+            (chunk == @as(Vec, @splat('('))) |
+            (chunk == @as(Vec, @splat(')'))) |
+            (chunk == @as(Vec, @splat('{'))) |
+            (chunk == @as(Vec, @splat('}'))) |
+            (chunk == @as(Vec, @splat('['))) |
+            (chunk == @as(Vec, @splat(']'))) |
+            (chunk == @as(Vec, @splat('/'))) |
+            (chunk == @as(Vec, @splat('\\'))) |
+            (chunk == @as(Vec, @splat('"'))) |
+            (chunk == @as(Vec, @splat('#'))) |
+            (chunk == @as(Vec, @splat(';'))) |
+            (chunk == @as(Vec, @splat('=')));
 
         const mask: u16 = @bitCast(is_non_ascii | is_term);
 

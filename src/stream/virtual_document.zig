@@ -41,7 +41,7 @@ pub const VirtualNodeHandle = struct {
 
     pub fn eql(self: VirtualNodeHandle, other: VirtualNodeHandle) bool {
         return self.chunk_index == other.chunk_index and
-            @intFromEnum(self.local_handle) == @intFromEnum(other.local_handle);
+            @backingInt(self.local_handle) == @backingInt(other.local_handle);
     }
 };
 

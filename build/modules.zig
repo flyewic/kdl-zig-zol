@@ -12,7 +12,7 @@ pub const ModuleRefs = struct {
 
 pub const Config = struct {
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
 };
 
 pub fn create(b: *std.Build, config: Config) ModuleRefs {

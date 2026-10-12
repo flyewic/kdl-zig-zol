@@ -3,6 +3,16 @@
 const std = @import("std");
 const kdl = @import("kdl");
 
+/// Upper bound for a single fuzz input; `Smith.slice` fills a caller buffer.
+const fuzz_max_input = 4096;
+
+/// Zig 0.17 fuzz targets receive a `*std.testing.Smith` rather than a byte
+/// slice; fill a stack buffer from it and return the populated prefix.
+fn fuzzInput(smith: *std.testing.Smith, buf: []u8) []const u8 {
+    const len: usize = smith.slice(buf);
+    return buf[0..len];
+}
+
 const ChunkedSliceReader = struct {
     data: []const u8,
     control: []const u8,
@@ -77,11 +87,13 @@ test "fuzz structural scan chunked" {
     try std.testing.fuzz({}, fuzzStructuralScan, .{});
 }
 
-fn fuzzStreamIterator(_: void, input: []const u8) !void {
+fn fuzzStreamIterator(_: void, smith: *std.testing.Smith) !void {
+    var input_buf: [fuzz_max_input]u8 = undefined;
+    const input = fuzzInput(smith, &input_buf);
     const control = input[0..@min(input.len, 16)];
     const max_chunk = deriveChunkMax(control);
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.SafeAllocator.init(std.heap.page_allocator, .{});
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -99,12 +111,14 @@ fn fuzzStreamIterator(_: void, input: []const u8) !void {
     try compareConsumeResults(direct_result, chunked_result);
 }
 
-fn fuzzStructuralScan(_: void, input: []const u8) !void {
+fn fuzzStructuralScan(_: void, smith: *std.testing.Smith) !void {
+    var input_buf: [fuzz_max_input]u8 = undefined;
+    const input = fuzzInput(smith, &input_buf);
     if (input.len == 0) return;
     const control = input[0..@min(input.len, 16)];
     const max_chunk = deriveChunkMax(control);
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.SafeAllocator.init(std.heap.page_allocator, .{});
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -148,10 +162,12 @@ test "fuzz preprocessed parser" {
 
 /// Fuzz test for the IndexParser two-stage parsing path.
 /// Compares the index parser output against the streaming parser for consistency.
-fn fuzzIndexParser(_: void, input: []const u8) !void {
+fn fuzzIndexParser(_: void, smith: *std.testing.Smith) !void {
+    var input_buf: [fuzz_max_input]u8 = undefined;
+    const input = fuzzInput(smith, &input_buf);
     if (input.len == 0) return;
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.SafeAllocator.init(std.heap.page_allocator, .{});
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -171,10 +187,12 @@ fn fuzzIndexParser(_: void, input: []const u8) !void {
 
 /// Fuzz test for the preprocessed (simdjson-style) parsing path.
 /// Compares the preprocessed parser output against the streaming parser for consistency.
-fn fuzzPreprocessedParser(_: void, input: []const u8) !void {
+fn fuzzPreprocessedParser(_: void, smith: *std.testing.Smith) !void {
+    var input_buf: [fuzz_max_input]u8 = undefined;
+    const input = fuzzInput(smith, &input_buf);
     if (input.len == 0) return;
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.SafeAllocator.init(std.heap.page_allocator, .{});
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

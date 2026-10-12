@@ -63,7 +63,8 @@ pub fn isDisallowed(c: u21) bool {
         0xD800...0xDFFF,
 
         // Direction control characters
-        0x200E, 0x200F, // LRM, RLM
+        0x200E,
+        0x200F, // LRM, RLM
         0x202A...0x202E, // LRE, RLE, PDF, LRO, RLO
         0x2066...0x2069, // LRI, RLI, FSI, PDI
 

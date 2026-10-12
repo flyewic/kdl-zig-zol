@@ -12,9 +12,8 @@ pub const ModuleRefs = Modules.ModuleRefs;
 
 pub const Config = struct {
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     modules: ModuleRefs,
-    args: ?[]const []const u8 = null,
 };
 
 pub const Collection = struct {
@@ -66,9 +65,7 @@ pub fn register(b: *std.Build, config: Config) !Collection {
         });
 
         const run = b.addRunArtifact(exe);
-        if (config.args) |args| {
-            run.addArgs(args);
-        }
+        run.addPassthruArgs();
 
         try all_steps.append(allocator, &run.step);
         try executables.append(allocator, exe);

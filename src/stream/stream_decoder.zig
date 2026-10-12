@@ -123,370 +123,370 @@ fn mapIterError(err: stream_iterator_mod.Error) ParseError {
 
 /// Internal decoder state
 const Decoder = struct {
-        const Self = @This();
+    const Self = @This();
 
-        iter: *StreamIterator,
-        allocator: Allocator,
-        options: ParseOptions,
-        current_event: ?Event = null,
+    iter: *StreamIterator,
+    allocator: Allocator,
+    options: ParseOptions,
+    current_event: ?Event = null,
 
-        fn advance(self: *Self) ParseError!void {
-            self.current_event = self.iter.next() catch |err| return mapIterError(err);
+    fn advance(self: *Self) ParseError!void {
+        self.current_event = self.iter.next() catch |err| return mapIterError(err);
+    }
+
+    fn getString(self: *Self, ref: StringRef) []const u8 {
+        return self.iter.getString(ref);
+    }
+
+    fn copyString(self: *Self, ref: StringRef) ParseError![]const u8 {
+        const s = self.getString(ref);
+        if (self.options.copy_strings) {
+            return self.allocator.dupe(u8, s) catch return ParseError.OutOfMemory;
         }
+        return s;
+    }
 
-        fn getString(self: *Self, ref: StringRef) []const u8 {
-            return self.iter.getString(ref);
+    pub fn parseInto(self: *Self, comptime T: type, out: *T) ParseError!void {
+        try self.advance(); // Prime with first event
+
+        const info = @typeInfo(T);
+        switch (info) {
+            .@"struct" => try self.parseStruct(T, out),
+            .pointer => |ptr| {
+                if (ptr.size == .slice) {
+                    try self.parseNodesAsSlice(ptr.child, out);
+                } else {
+                    return ParseError.TypeMismatch;
+                }
+            },
+            else => return ParseError.TypeMismatch,
         }
+    }
 
-        fn copyString(self: *Self, ref: StringRef) ParseError![]const u8 {
-            const s = self.getString(ref);
-            if (self.options.copy_strings) {
-                return self.allocator.dupe(u8, s) catch return ParseError.OutOfMemory;
-            }
-            return s;
-        }
+    fn parseStruct(self: *Self, comptime T: type, out: *T) ParseError!void {
+        const info = @typeInfo(T).@"struct";
+        var fields_set: [info.field_names.len]bool = @splat(false);
 
-        pub fn parseInto(self: *Self, comptime T: type, out: *T) ParseError!void {
-            try self.advance(); // Prime with first event
+        while (self.current_event) |event| {
+            switch (event) {
+                .start_node => |node| {
+                    const node_name = self.getString(node.name);
 
-            const info = @typeInfo(T);
-            switch (info) {
-                .@"struct" => try self.parseStruct(T, out),
-                .pointer => |ptr| {
-                    if (ptr.size == .slice) {
-                        try self.parseNodesAsSlice(ptr.child, out);
-                    } else {
-                        return ParseError.TypeMismatch;
+                    var found = false;
+                    inline for (info.field_names, info.field_types, 0..) |field_name, field_type, i| {
+                        if (std.mem.eql(u8, node_name, field_name)) {
+                            found = true;
+                            if (fields_set[i]) {
+                                switch (self.options.duplicate_field_behavior) {
+                                    .use_first => {
+                                        try self.consumeNode();
+                                        break;
+                                    },
+                                    .@"error" => return ParseError.DuplicateProperty,
+                                    .use_last => {
+                                        try self.parseNodeBodyInto(field_type, &@field(out, field_name));
+                                    },
+                                }
+                            } else {
+                                try self.parseNodeBodyInto(field_type, &@field(out, field_name));
+                                fields_set[i] = true;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        if (!self.options.ignore_unknown_fields) {
+                            return ParseError.UnknownField;
+                        }
+                        try self.consumeNode();
                     }
                 },
-                else => return ParseError.TypeMismatch,
+                .end_node => {
+                    // End of children block
+                    try self.advance();
+                    return;
+                },
+                else => {
+                    try self.advance();
+                },
             }
         }
+    }
 
-        fn parseStruct(self: *Self, comptime T: type, out: *T) ParseError!void {
-            const fields = std.meta.fields(T);
-            var fields_set = [_]bool{false} ** fields.len;
-
-            while (self.current_event) |event| {
-                switch (event) {
-                    .start_node => |node| {
-                        const node_name = self.getString(node.name);
-
-                        var found = false;
-                        inline for (fields, 0..) |field, i| {
-                            if (std.mem.eql(u8, node_name, field.name)) {
-                                found = true;
-                                if (fields_set[i]) {
-                                    switch (self.options.duplicate_field_behavior) {
-                                        .use_first => {
-                                            try self.consumeNode();
-                                            break;
-                                        },
-                                        .@"error" => return ParseError.DuplicateProperty,
-                                        .use_last => {
-                                            try self.parseNodeBodyInto(field.type, &@field(out, field.name));
-                                        },
-                                    }
-                                } else {
-                                    try self.parseNodeBodyInto(field.type, &@field(out, field.name));
-                                    fields_set[i] = true;
-                                }
-                                break;
-                            }
-                        }
-
-                        if (!found) {
-                            if (!self.options.ignore_unknown_fields) {
-                                return ParseError.UnknownField;
-                            }
-                            try self.consumeNode();
-                        }
-                    },
-                    .end_node => {
-                        // End of children block
-                        try self.advance();
-                        return;
-                    },
-                    else => {
-                        try self.advance();
-                    },
-                }
-            }
-        }
-
-        fn parseNodeBodyInto(self: *Self, comptime T: type, out: *T) ParseError!void {
-            const info = @typeInfo(T);
-            switch (info) {
-                .@"struct" => try self.parseNodeAsStruct(T, out),
-                .optional => |opt| {
-                    const child_info = @typeInfo(opt.child);
-                    switch (child_info) {
-                        // For simple types, parse directly with optional type so assignValue handles null
-                        .int, .float, .bool, .@"enum" => try self.parseSimpleValue(T, out),
-                        .pointer => |ptr| {
-                            if (ptr.size == .slice and ptr.child == u8) {
-                                // String type - parse with optional type
-                                try self.parseSimpleValue(T, out);
-                            } else {
-                                // Complex pointer type - unwrap and recurse
-                                var temp: opt.child = undefined;
-                                try self.parseNodeBodyInto(opt.child, &temp);
-                                out.* = temp;
-                            }
-                        },
-                        // For structs, unwrap and recurse
-                        .@"struct" => {
-                            var temp: opt.child = .{};
-                            try self.parseNodeBodyInto(opt.child, &temp);
-                            out.* = temp;
-                        },
-                        else => {
+    fn parseNodeBodyInto(self: *Self, comptime T: type, out: *T) ParseError!void {
+        const info = @typeInfo(T);
+        switch (info) {
+            .@"struct" => try self.parseNodeAsStruct(T, out),
+            .optional => |opt| {
+                const child_info = @typeInfo(opt.child);
+                switch (child_info) {
+                    // For simple types, parse directly with optional type so assignValue handles null
+                    .int, .float, .bool, .@"enum" => try self.parseSimpleValue(T, out),
+                    .pointer => |ptr| {
+                        if (ptr.size == .slice and ptr.child == u8) {
+                            // String type - parse with optional type
+                            try self.parseSimpleValue(T, out);
+                        } else {
+                            // Complex pointer type - unwrap and recurse
                             var temp: opt.child = undefined;
                             try self.parseNodeBodyInto(opt.child, &temp);
                             out.* = temp;
-                        },
-                    }
-                },
-                .pointer => |ptr| {
-                    if (ptr.size == .slice and ptr.child != u8) {
-                        var item: ptr.child = if (@typeInfo(ptr.child) == .@"struct") .{} else undefined;
-                        try self.parseNodeBodyInto(ptr.child, &item);
-                        try self.appendToSlice(ptr.child, out, item);
-                    } else {
-                        try self.parseSimpleValue(T, out);
-                    }
-                },
-                .int, .float, .bool, .@"enum" => try self.parseSimpleValue(T, out),
-                else => return ParseError.TypeMismatch,
-            }
-        }
-
-        fn parseNodeAsStruct(self: *Self, comptime T: type, out: *T) ParseError!void {
-            const fields = std.meta.fields(T);
-            var fields_set = [_]bool{false} ** fields.len;
-
-            try self.advance(); // Move past start_node
-
-            while (self.current_event) |event| {
-                switch (event) {
-                    .argument => |arg| {
-                        if (@hasField(T, "__args")) {
-                            const ArgsFieldType = @TypeOf(@field(out, "__args"));
-                            const ArgElemType = std.meta.Elem(ArgsFieldType);
-                            var parsed_arg: ArgElemType = if (@typeInfo(ArgElemType) == .@"struct") .{} else std.mem.zeroes(ArgElemType);
-                            try self.assignValue(ArgElemType, &parsed_arg, arg.value);
-                            try self.appendToSlice(ArgElemType, &@field(out, "__args"), parsed_arg);
                         }
-                        try self.advance();
                     },
-                    .property => |prop| {
-                        const key = self.getString(prop.name);
+                    // For structs, unwrap and recurse
+                    .@"struct" => {
+                        var temp: opt.child = .{};
+                        try self.parseNodeBodyInto(opt.child, &temp);
+                        out.* = temp;
+                    },
+                    else => {
+                        var temp: opt.child = undefined;
+                        try self.parseNodeBodyInto(opt.child, &temp);
+                        out.* = temp;
+                    },
+                }
+            },
+            .pointer => |ptr| {
+                if (ptr.size == .slice and ptr.child != u8) {
+                    var item: ptr.child = if (@typeInfo(ptr.child) == .@"struct") .{} else undefined;
+                    try self.parseNodeBodyInto(ptr.child, &item);
+                    try self.appendToSlice(ptr.child, out, item);
+                } else {
+                    try self.parseSimpleValue(T, out);
+                }
+            },
+            .int, .float, .bool, .@"enum" => try self.parseSimpleValue(T, out),
+            else => return ParseError.TypeMismatch,
+        }
+    }
 
-                        var found = false;
-                        inline for (fields, 0..) |field, i| {
-                            if (std.mem.eql(u8, key, field.name)) {
-                                found = true;
-                                if (fields_set[i]) {
-                                    switch (self.options.duplicate_field_behavior) {
-                                        .use_first => {},
-                                        .@"error" => return ParseError.DuplicateProperty,
-                                        .use_last => {
-                                            try self.assignValue(field.type, &@field(out, field.name), prop.value);
-                                        },
-                                    }
-                                } else {
-                                    try self.assignValue(field.type, &@field(out, field.name), prop.value);
-                                    fields_set[i] = true;
+    fn parseNodeAsStruct(self: *Self, comptime T: type, out: *T) ParseError!void {
+        const info = @typeInfo(T).@"struct";
+        var fields_set: [info.field_names.len]bool = @splat(false);
+
+        try self.advance(); // Move past start_node
+
+        while (self.current_event) |event| {
+            switch (event) {
+                .argument => |arg| {
+                    if (@hasField(T, "__args")) {
+                        const ArgsFieldType = @TypeOf(@field(out, "__args"));
+                        const ArgElemType = std.meta.Elem(ArgsFieldType);
+                        var parsed_arg: ArgElemType = if (@typeInfo(ArgElemType) == .@"struct") .{} else std.mem.zeroes(ArgElemType);
+                        try self.assignValue(ArgElemType, &parsed_arg, arg.value);
+                        try self.appendToSlice(ArgElemType, &@field(out, "__args"), parsed_arg);
+                    }
+                    try self.advance();
+                },
+                .property => |prop| {
+                    const key = self.getString(prop.name);
+
+                    var found = false;
+                    inline for (info.field_names, info.field_types, 0..) |field_name, field_type, i| {
+                        if (std.mem.eql(u8, key, field_name)) {
+                            found = true;
+                            if (fields_set[i]) {
+                                switch (self.options.duplicate_field_behavior) {
+                                    .use_first => {},
+                                    .@"error" => return ParseError.DuplicateProperty,
+                                    .use_last => {
+                                        try self.assignValue(field_type, &@field(out, field_name), prop.value);
+                                    },
                                 }
-                                break;
+                            } else {
+                                try self.assignValue(field_type, &@field(out, field_name), prop.value);
+                                fields_set[i] = true;
                             }
+                            break;
                         }
-                        if (!found and !self.options.ignore_unknown_fields) {
+                    }
+                    if (!found and !self.options.ignore_unknown_fields) {
+                        return ParseError.UnknownField;
+                    }
+                    try self.advance();
+                },
+                .start_node => |child_node| {
+                    const child_name = self.getString(child_node.name);
+
+                    var found = false;
+                    inline for (info.field_names, info.field_types, 0..) |field_name, field_type, i| {
+                        if (std.mem.eql(u8, child_name, field_name)) {
+                            found = true;
+                            if (fields_set[i]) {
+                                switch (self.options.duplicate_field_behavior) {
+                                    .use_first => {
+                                        try self.consumeNode();
+                                    },
+                                    .@"error" => return ParseError.DuplicateProperty,
+                                    .use_last => {
+                                        try self.parseNodeBodyInto(field_type, &@field(out, field_name));
+                                    },
+                                }
+                            } else {
+                                try self.parseNodeBodyInto(field_type, &@field(out, field_name));
+                                fields_set[i] = true;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        if (!self.options.ignore_unknown_fields) {
                             return ParseError.UnknownField;
                         }
-                        try self.advance();
-                    },
-                    .start_node => |child_node| {
-                        const child_name = self.getString(child_node.name);
-
-                        var found = false;
-                        inline for (fields, 0..) |field, i| {
-                            if (std.mem.eql(u8, child_name, field.name)) {
-                                found = true;
-                                if (fields_set[i]) {
-                                    switch (self.options.duplicate_field_behavior) {
-                                        .use_first => {
-                                            try self.consumeNode();
-                                        },
-                                        .@"error" => return ParseError.DuplicateProperty,
-                                        .use_last => {
-                                            try self.parseNodeBodyInto(field.type, &@field(out, field.name));
-                                        },
-                                    }
-                                } else {
-                                    try self.parseNodeBodyInto(field.type, &@field(out, field.name));
-                                    fields_set[i] = true;
-                                }
-                                break;
-                            }
-                        }
-
-                        if (!found) {
-                            if (!self.options.ignore_unknown_fields) {
-                                return ParseError.UnknownField;
-                            }
-                            try self.consumeNode();
-                        }
-                    },
-                    .end_node => {
-                        try self.advance();
-                        return;
-                    },
-                }
-            }
-        }
-
-        fn parseSimpleValue(self: *Self, comptime T: type, out: *T) ParseError!void {
-            try self.advance(); // Move past start_node
-
-            var assigned = false;
-
-            while (self.current_event) |event| {
-                switch (event) {
-                    .argument => |arg| {
-                        if (!assigned) {
-                            try self.assignValue(T, out, arg.value);
-                            assigned = true;
-                        }
-                        try self.advance();
-                    },
-                    .property => {
-                        try self.advance();
-                    },
-                    .start_node => {
                         try self.consumeNode();
-                    },
-                    .end_node => {
-                        try self.advance();
-                        if (!assigned) return ParseError.MissingField;
-                        return;
-                    },
-                }
+                    }
+                },
+                .end_node => {
+                    try self.advance();
+                    return;
+                },
             }
+        }
+    }
 
-            if (!assigned) return ParseError.MissingField;
+    fn parseSimpleValue(self: *Self, comptime T: type, out: *T) ParseError!void {
+        try self.advance(); // Move past start_node
+
+        var assigned = false;
+
+        while (self.current_event) |event| {
+            switch (event) {
+                .argument => |arg| {
+                    if (!assigned) {
+                        try self.assignValue(T, out, arg.value);
+                        assigned = true;
+                    }
+                    try self.advance();
+                },
+                .property => {
+                    try self.advance();
+                },
+                .start_node => {
+                    try self.consumeNode();
+                },
+                .end_node => {
+                    try self.advance();
+                    if (!assigned) return ParseError.MissingField;
+                    return;
+                },
+            }
         }
 
-        fn assignValue(self: *Self, comptime Target: type, out: *Target, val: StreamValue) ParseError!void {
-            const info = @typeInfo(Target);
-            switch (info) {
-                .int => switch (val) {
-                    .integer => |i| out.* = std.math.cast(Target, i) orelse return ParseError.TypeMismatch,
-                    else => return ParseError.TypeMismatch,
-                },
-                .float => switch (val) {
-                    .float => |f| out.* = @floatCast(f.value),
-                    .integer => |i| out.* = @floatFromInt(i),
-                    .positive_inf => out.* = std.math.inf(Target),
-                    .negative_inf => out.* = -std.math.inf(Target),
-                    .nan_value => out.* = std.math.nan(Target),
-                    else => return ParseError.TypeMismatch,
-                },
-                .bool => switch (val) {
-                    .boolean => |b| out.* = b,
-                    else => return ParseError.TypeMismatch,
-                },
-                .pointer => |ptr| {
-                    if (ptr.size == .slice and ptr.child == u8) {
-                        switch (val) {
-                            .string => |ref| {
-                                out.* = try self.copyString(ref);
-                            },
-                            else => return ParseError.TypeMismatch,
-                        }
-                    } else {
-                        return ParseError.TypeMismatch;
-                    }
-                },
-                .optional => |opt| {
-                    switch (val) {
-                        .null_value => out.* = null,
-                        else => {
-                            var temp: opt.child = if (@typeInfo(opt.child) == .@"struct") .{} else std.mem.zeroes(opt.child);
-                            try self.assignValue(opt.child, &temp, val);
-                            out.* = temp;
-                        },
-                    }
-                },
-                .@"enum" => |e| {
+        if (!assigned) return ParseError.MissingField;
+    }
+
+    fn assignValue(self: *Self, comptime Target: type, out: *Target, val: StreamValue) ParseError!void {
+        const info = @typeInfo(Target);
+        switch (info) {
+            .int => switch (val) {
+                .integer => |i| out.* = std.math.cast(Target, i) orelse return ParseError.TypeMismatch,
+                else => return ParseError.TypeMismatch,
+            },
+            .float => switch (val) {
+                .float => |f| out.* = @floatCast(f.value),
+                .integer => |i| out.* = @floatFromInt(i),
+                .positive_inf => out.* = std.math.inf(Target),
+                .negative_inf => out.* = -std.math.inf(Target),
+                .nan_value => out.* = std.math.nan(Target),
+                else => return ParseError.TypeMismatch,
+            },
+            .bool => switch (val) {
+                .boolean => |b| out.* = b,
+                else => return ParseError.TypeMismatch,
+            },
+            .pointer => |ptr| {
+                if (ptr.size == .slice and ptr.child == u8) {
                     switch (val) {
                         .string => |ref| {
-                            const s = self.getString(ref);
-                            inline for (e.fields) |field| {
-                                if (std.mem.eql(u8, s, field.name)) {
-                                    out.* = @enumFromInt(field.value);
-                                    return;
-                                }
-                            }
-                            return ParseError.InvalidEnumValue;
+                            out.* = try self.copyString(ref);
                         },
                         else => return ParseError.TypeMismatch,
                     }
+                } else {
+                    return ParseError.TypeMismatch;
+                }
+            },
+            .optional => |opt| {
+                switch (val) {
+                    .null_value => out.* = null,
+                    else => {
+                        var temp: opt.child = if (@typeInfo(opt.child) == .@"struct") .{} else std.mem.zeroes(opt.child);
+                        try self.assignValue(opt.child, &temp, val);
+                        out.* = temp;
+                    },
+                }
+            },
+            .@"enum" => |e| {
+                switch (val) {
+                    .string => |ref| {
+                        const s = self.getString(ref);
+                        inline for (e.field_names, e.field_values) |field_name, field_value| {
+                            if (std.mem.eql(u8, s, field_name)) {
+                                out.* = @fromBackingInt(field_value);
+                                return;
+                            }
+                        }
+                        return ParseError.InvalidEnumValue;
+                    },
+                    else => return ParseError.TypeMismatch,
+                }
+            },
+            else => return ParseError.TypeMismatch,
+        }
+    }
+
+    fn appendToSlice(self: *Self, comptime Elem: type, slice_ptr: *[]Elem, item: Elem) ParseError!void {
+        var list = std.ArrayListUnmanaged(Elem){
+            .items = slice_ptr.*,
+            .capacity = slice_ptr.*.len,
+        };
+        list.append(self.allocator, item) catch return ParseError.OutOfMemory;
+        slice_ptr.* = list.items;
+    }
+
+    fn parseNodesAsSlice(self: *Self, comptime T: type, out: *[]T) ParseError!void {
+        var list: std.ArrayListUnmanaged(T) = .empty;
+
+        while (self.current_event) |event| {
+            switch (event) {
+                .start_node => {
+                    var item: T = if (@typeInfo(T) == .@"struct") .{} else std.mem.zeroes(T);
+                    try self.parseNodeBodyInto(T, &item);
+                    list.append(self.allocator, item) catch return ParseError.OutOfMemory;
                 },
-                else => return ParseError.TypeMismatch,
+                else => {
+                    try self.advance();
+                },
             }
         }
 
-        fn appendToSlice(self: *Self, comptime Elem: type, slice_ptr: *[]Elem, item: Elem) ParseError!void {
-            var list = std.ArrayListUnmanaged(Elem){
-                .items = slice_ptr.*,
-                .capacity = slice_ptr.*.len,
-            };
-            list.append(self.allocator, item) catch return ParseError.OutOfMemory;
-            slice_ptr.* = list.items;
-        }
+        out.* = list.toOwnedSlice(self.allocator) catch return ParseError.OutOfMemory;
+    }
 
-        fn parseNodesAsSlice(self: *Self, comptime T: type, out: *[]T) ParseError!void {
-            var list: std.ArrayListUnmanaged(T) = .{};
+    fn consumeNode(self: *Self) ParseError!void {
+        var depth: usize = 1;
 
-            while (self.current_event) |event| {
-                switch (event) {
-                    .start_node => {
-                        var item: T = if (@typeInfo(T) == .@"struct") .{} else std.mem.zeroes(T);
-                        try self.parseNodeBodyInto(T, &item);
-                        list.append(self.allocator, item) catch return ParseError.OutOfMemory;
-                    },
-                    else => {
-                        try self.advance();
-                    },
-                }
-            }
+        try self.advance(); // Move past start_node
 
-            out.* = list.toOwnedSlice(self.allocator) catch return ParseError.OutOfMemory;
-        }
-
-        fn consumeNode(self: *Self) ParseError!void {
-            var depth: usize = 1;
-
-            try self.advance(); // Move past start_node
-
-            while (self.current_event) |event| {
-                switch (event) {
-                    .start_node => {
-                        depth += 1;
-                        try self.advance();
-                    },
-                    .end_node => {
-                        depth -= 1;
-                        try self.advance();
-                        if (depth == 0) return;
-                    },
-                    else => {
-                        try self.advance();
-                    },
-                }
+        while (self.current_event) |event| {
+            switch (event) {
+                .start_node => {
+                    depth += 1;
+                    try self.advance();
+                },
+                .end_node => {
+                    depth -= 1;
+                    try self.advance();
+                    if (depth == 0) return;
+                },
+                else => {
+                    try self.advance();
+                },
             }
         }
+    }
 };
 
 // ============================================================================

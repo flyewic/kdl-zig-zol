@@ -145,7 +145,7 @@ pub const Scanner = struct {
 
         while (pos + SIMD_BLOCK_SIZE <= len) {
             const block = data[pos..][0..SIMD_BLOCK_SIZE];
-            
+
             // Select mask based on state
             // Priority: comments > strings > normal
             // Note: state transitions happen in handleCandidate, so mask selection is valid for the START of the block.
@@ -160,10 +160,10 @@ pub const Scanner = struct {
             // String: " \ \n \r
             // Normal includes String. So if we transition Normal -> String, we are fine (we might over-scan, but handleCandidate filters).
             // String -> Normal: " ends string. String mask includes ". We find it. Transition to Normal. Next block uses Normal.
-            // 
+            //
             // Comment -> Normal: \n ends comment. Comment mask includes \n. We find it. Transition.
             // BlockComment -> Normal: */ ends it. Block mask includes * /. We find it.
-            
+
             var mask: u64 = 0;
             if (self.state.in_line_comment) {
                 mask = simd.scanCommentMask(block);
@@ -196,7 +196,7 @@ pub const Scanner = struct {
                         self.cursor_pos = char_pos;
                         return;
                     }
-                    
+
                     // If state changed, we should technically switch masks.
                     // But recalculating mask for remainder of block is expensive?
                     // Or maybe we just accept over-scanning for the rest of this block?
@@ -205,19 +205,19 @@ pub const Scanner = struct {
                     // E.g. Normal -> String. Normal mask > String mask. We are fine.
                     // String -> Normal. String mask < Normal mask. We might MISS structural chars in the rest of the block!
                     // CRITICAL: If we switch from a narrower mask to a wider mask, we MUST re-scan the block remainder!
-                    
+
                     // Transitions:
                     // Normal -> String (Wide -> Narrow): Safe.
                     // Normal -> Comment (Wide -> Narrow): Safe.
                     // String -> Normal (Narrow -> Wide): UNSAFE.
                     // Comment -> Normal (Narrow -> Wide): UNSAFE.
-                    
+
                     // Optimization: check if we need to re-scan.
                     // Ideally, we just break and let the loop restart?
                     // But pos += 64 happens at end.
                     // We can update pos and `continue` outer loop?
                     // We need to advance pos to char_pos + 1.
-                    
+
                     // Let's verify strict subsets:
                     // String ( " \ \n \r ) vs Normal ( ... " \ \n \r ) -> String is subset.
                     // Comment ( \n \r ) vs Normal -> Subset.
@@ -229,14 +229,14 @@ pub const Scanner = struct {
                     // So Normal -> BlockComment is Narrow -> Wide (effectively, for *)?
                     // Actually Normal mask has / but not *. Block mask has * and /.
                     // So if we find /, we enter block comment mode. We MUST rescan for *.
-                    
+
                     // Conclusion: On ANY state change that affects mask type, we should probably re-eval.
                     // Or simpler: just continue outer loop from char_pos + 1.
-                    
+
                     // However, detecting "state change" efficiently?
                     // We can just check if we are exiting a state?
                     // Or just always advance bit by bit? No, that defeats SIMD.
-                    
+
                     // Conservative approach: If we hit a candidate that *might* change state, abort block scan and restart from next char.
                     // Candidates that change state: " (Normal<->String), / (Normal->Comment), \n (Comment->Normal), * (Block->Normal logic).
                     // Almost all candidates can change state.
@@ -248,37 +248,37 @@ pub const Scanner = struct {
                     // So we can do:
                     // pos = char_pos + 1;
                     // continue;
-                    
+
                     // But we want to process 64-byte aligned blocks for speed.
                     // `scanAvailable` loop increments by 64.
                     // If we break, we fall into the "trailing bytes" loop or need logic to realign.
-                    
+
                     // Let's try to just process. If we miss something, it's bad.
                     // If we use the "Union of all masks" always, it's correct but slow.
                     // We want speed.
-                    
+
                     // Let's implement the restart logic. It is robust.
                     // If we find a match:
                     // 1. Handle it.
                     // 2. Advance pos to char_pos + 1.
                     // 3. Continue outer loop (re-calculating mask at new pos).
-                    
+
                     // Performance impact:
                     // If matches are sparse (every 100 bytes), we scan 64, find nothing. Fast.
                     // If matches are dense (every 5 bytes), we scan 64, find at 5. Handle. Re-scan from 6.
                     // Re-scanning unaligned from 6 might be slightly slower than aligned?
                     // But correctness is paramount.
-                    
+
                     // Wait, `scanStructuralMask` handles unaligned fine.
                     // So "restart loop" is the way to go for correctness with mode switching.
-                    
+
                     bits = 0; // Clear bits to break inner loop
                     pos = char_pos + 1; // Advance
                     // We need to 'continue' the outer loop, but we are inside `while(bits!=0)`.
                     // And we modified `pos`.
                     // We need to jump to start of outer loop.
                 }
-                
+
                 // If we finished bits without restarting (e.g. no state change check?),
                 // we would normally pos += 64.
                 // But with the restart logic, we only reach here if mask was 0.

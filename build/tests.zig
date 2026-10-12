@@ -42,7 +42,7 @@ pub const ModuleRefs = Modules.ModuleRefs;
 
 pub const Config = struct {
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     modules: ModuleRefs,
     test_filters: []const []const u8,
 };

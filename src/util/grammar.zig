@@ -1,5 +1,4 @@
 /// Shared grammar helpers for KDL parsing.
-
 /// ASCII token terminators for identifiers and tokens.
 pub fn isTokenTerminator(c: u8) bool {
     return switch (c) {
